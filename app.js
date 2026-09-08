@@ -83,6 +83,7 @@ const Api = {
 
   listContents: (profileId) => apiFetch(`/contents?profileId=${profileId}`),
   createContent: (profileId, title, bodyText, imageUrl) => apiFetch('/contents', { method: 'POST', body: JSON.stringify({ profileId, title, bodyText, ...(imageUrl ? { imageUrl } : {}) }) }),
+  patchContent: (id, data) => apiFetch(`/contents/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   duplicateContent: (id) => apiFetch(`/contents/${id}/duplicate`, { method: 'POST' }),
   deleteContent: (id) => apiFetch(`/contents/${id}`, { method: 'DELETE' }),
 
@@ -486,6 +487,7 @@ async function renderContenido() {
           <div class="list-title">${escapeHtml(c.title)}${c.imageUrl ? ' <span class="cell-muted" style="font-weight:400;">(con imagen)</span>' : ''}</div>
           <div class="list-actions">
             <button class="btn btn-line btn-sm" data-preview="${c.id}">Vista previa</button>
+            <button class="btn btn-line btn-sm" data-edit="${c.id}">Editar</button>
             <button class="btn btn-line btn-sm" data-dup="${c.id}">Duplicar</button>
             <button class="btn btn-danger btn-sm" data-del="${c.id}">Eliminar</button>
           </div>
@@ -499,6 +501,10 @@ async function renderContenido() {
     list.querySelectorAll('[data-preview]').forEach((b) => b.addEventListener('click', () => {
       const p = document.getElementById('preview-' + b.dataset.preview);
       p.classList.toggle('hidden');
+    }));
+    list.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => {
+      const item = items.find((it) => it.id === b.dataset.edit);
+      if (item) openContentEditModal(item, load);
     }));
     list.querySelectorAll('[data-dup]').forEach((b) => b.addEventListener('click', async () => {
       await guard(async () => { await Api.duplicateContent(b.dataset.dup); toast('Contenido duplicado.'); load(); }, 'No se pudo duplicar');
@@ -563,6 +569,62 @@ async function renderContenido() {
   });
 
   load();
+}
+
+// Modal para editar un contenido ya existente (título, texto y, si se
+// quiere, reemplazar la imagen). Se usa desde el botón "Editar" en la
+// lista de Contenido.
+function openContentEditModal(item, onSaved) {
+  let pendingImageDataUrl = null;
+  openModal(`
+    <h2>Editar contenido</h2>
+    <form id="contentEditForm">
+      <div class="field-block"><label>Título (solo para identificarlo en VELA)</label><input id="ceTitle" required value="${escapeHtml(item.title)}"></div>
+      <div class="field-block"><label>Texto que se publicará</label><textarea id="ceBody" required placeholder="Escribe el texto exacto, con saltos de línea y emojis si quieres.">${escapeHtml(item.bodyText)}</textarea></div>
+      <div class="field-block">
+        <label>Imagen (opcional)</label>
+        ${item.imageUrl ? '<div class="cell-muted" style="margin-bottom:6px;">Ya tiene una imagen. Sube otra solo si quieres reemplazarla.</div>' : ''}
+        <input type="file" id="ceImage" accept="image/*">
+        <div class="cell-muted" id="ceImageStatus" style="margin-top:6px;"></div>
+        <img id="ceImagePreview" style="max-width:220px;border-radius:8px;margin-top:8px;${item.imageUrl ? '' : 'display:none;'}" ${item.imageUrl ? `src="${escapeHtml(item.imageUrl)}"` : ''}>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-line" id="ceCancel">Cancelar</button>
+        <button type="submit" class="btn btn-accent">Guardar cambios</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('ceCancel').addEventListener('click', closeModal);
+  document.getElementById('ceImage').addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    const status = document.getElementById('ceImageStatus');
+    const preview = document.getElementById('ceImagePreview');
+    if (!file) { pendingImageDataUrl = null; return; }
+    status.textContent = 'Preparando imagen…';
+    try {
+      pendingImageDataUrl = await resizeImageToDataUrl(file, 1280, 0.82);
+      preview.src = pendingImageDataUrl;
+      preview.style.display = 'block';
+      status.textContent = 'Imagen lista (' + Math.round(pendingImageDataUrl.length / 1024) + ' KB).';
+    } catch (err) {
+      pendingImageDataUrl = null;
+      status.textContent = 'No se pudo procesar esa imagen: ' + (err.message || err);
+    }
+  });
+  document.getElementById('contentEditForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = {
+      title: document.getElementById('ceTitle').value.trim(),
+      bodyText: document.getElementById('ceBody').value,
+    };
+    if (pendingImageDataUrl) data.imageUrl = pendingImageDataUrl;
+    await guard(async () => {
+      await Api.patchContent(item.id, data);
+      closeModal();
+      toast('Contenido actualizado.');
+      onSaved();
+    }, 'No se pudo guardar');
+  });
 }
 
 // ---------- Campañas ----------
