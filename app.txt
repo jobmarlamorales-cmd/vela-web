@@ -186,7 +186,19 @@ function renderProfileSwitcher() {
 
 function renderCurrentPanel() {
   const renderers = {
-    operacion: rend      <div><h1>Perfiles</h1><p class="page-sub">Cada perfil tiene sus propios grupos, campañas e historial</p></div>
+    operacion: renderOperacion, perfiles: renderPerfiles, grupos: renderGrupos,
+    contenido: renderContenido, campanas: renderCampanas, historial: renderHistorial,
+    configuracion: renderConfiguracion, conectar: renderConectar,
+  };
+  (renderers[state.panel] || renderOperacion)();
+}
+
+// ---------- Perfiles ----------
+async function renderPerfiles() {
+  const el = document.getElementById('panel-perfiles');
+  el.innerHTML = `
+    <div class="page-head">
+      <div><h1>Perfiles</h1><p class="page-sub">Cada perfil tiene sus propios grupos, campañas e historial</p></div>
       <button class="btn btn-accent" id="btnAddProfile">+ Agregar perfil</button>
     </div>
     <div class="surface" id="profilesList"><div class="empty-state">Cargando…</div></div>
@@ -374,7 +386,19 @@ function resizeImageToDataUrl(file, maxDimension, quality) {
     reader.onload = () => {
       const img = new Image();
       img.onerror = () => reject(new Error('No se pudo abrir esa imagen.'));
-      img.onload =         resolve(canvas.toDataURL('image/jpeg', quality));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDimension || height > maxDimension) {
+          const scale = maxDimension / Math.max(width, height);
+          width = Math.round(width * scale);
+          height = Math.round(height * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
       };
       img.src = reader.result;
     };
@@ -783,27 +807,4 @@ async function boot() {
     try { await boot(); }
     catch (e) { localStorage.removeItem('vela_token'); state.token = null; }
   }
-})();() => {
-        let { width, height } = img;
-        if (width > maxDimension || height > maxDimension) {
-          const scale = maxDimension / Math.max(width, height);
-          width = Math.round(width * scale);
-          height = Math.round(height * scale);
-        }
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-erOperacion, perfiles: renderPerfiles, grupos: renderGrupos,
-    contenido: renderContenido, campanas: renderCampanas, historial: renderHistorial,
-    configuracion: renderConfiguracion, conectar: renderConectar,
-  };
-  (renderers[state.panel] || renderOperacion)();
-}
-
-// ---------- Perfiles ----------
-async function renderPerfiles() {
-  const el = document.getElementById('panel-perfiles');
-  el.innerHTML = `
-    <div class="page-head">
+})();
