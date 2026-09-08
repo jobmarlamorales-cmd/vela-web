@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VELA</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Pantalla de acceso -->
+  <div class="auth-screen" id="authScreen">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <svg class="brand-flame" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.3c2.7 3.4 4.3 5.9 4.3 8.9a4.3 4.3 0 1 1-8.6 0c0-1.4.6-2.5 1.3-3.6.3 1.1.9 1.8 1.7 1.8.9 0 1.3-.9 1-1.9C11 6.1 10.3 4.6 12 2.3Z"/></svg>
+        <span class="brand-word">VELA</span>
+      </div>
+      <div id="authMessage"></div>
+      <form id="authForm">
+        <div class="field-block">
+          <label>Correo</label>
+          <input type="email" id="authEmail" required placeholder="tucorreo@ejemplo.com" autocomplete="username">
+        </div>
+        <div class="field-block">
+          <label>Contraseña</label>
+          <input type="password" id="authPassword" required minlength="8" placeholder="Al menos 8 caracteres" autocomplete="current-password">
+        </div>
+        <button class="btn btn-accent" type="submit" style="width:100%; justify-content:center;" id="authSubmit">Entrar</button>
+      </form>
+      <div class="auth-toggle" id="authToggle">
+        ¿No tienes cuenta? <button type="button" id="authToggleBtn">Crear una</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- App principal (se muestra tras iniciar sesión) -->
+  <div class="app hidden" id="app">
+    <aside class="console">
+      <div>
+        <div class="console-brand">
+          <svg class="brand-flame" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.3c2.7 3.4 4.3 5.9 4.3 8.9a4.3 4.3 0 1 1-8.6 0c0-1.4.6-2.5 1.3-3.6.3 1.1.9 1.8 1.7 1.8.9 0 1.3-.9 1-1.9C11 6.1 10.3 4.6 12 2.3Z"/></svg>
+          <span class="brand-word">VELA</span>
+        </div>
+        <div class="brand-caption">en vela, sin publicar</div>
+      </div>
+
+      <nav class="console-nav" id="nav">
+        <button class="nav-item active" data-panel="operacion">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 13 8 13 10 7 14 18 16 13 21 13"/></svg>
+          <span>Operación</span>
+        </button>
+        <button class="nav-item" data-panel="perfiles">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8.2" r="3.2"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"/></svg>
+          <span>Perfiles</span>
+        </button>
+        <button class="nav-item" data-panel="grupos">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.7" cy="8.5" r="2.6"/><circle cx="16.3" cy="9.3" r="2.1"/><path d="M3.3 19c0-3.1 2.6-5.2 5.4-5.2s5.4 2.1 5.4 5.2"/><path d="M14.6 14.2c2.3.5 3.8 2.2 3.8 4.8"/></svg>
+          <span>Grupos</span>
+        </button>
+        <button class="nav-item" data-panel="contenido">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="1.6"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
+          <span>Contenido</span>
+        </button>
+        <button class="nav-item" data-panel="campanas">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5 20 4l-7 16-2-7-7-.5Z"/></svg>
+          <span>Campañas</span>
+        </button>
+        <button class="nav-item" data-panel="historial">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="7.3"/><polyline points="12 9.3 12 13 14.8 14.8"/><path d="M9 3.6 12 5.7 15 3.6"/></svg>
+          <span>Historial</span>
+        </button>
+        <button class="nav-item" data-panel="configuracion">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><circle cx="9.5" cy="7" r="1.8"/><line x1="4" y1="12.5" x2="20" y2="12.5"/><circle cx="15" cy="12.5" r="1.8"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="11.5" cy="18" r="1.8"/></svg>
+          <span>Configuración</span>
+        </button>
+        <button class="nav-item" data-panel="conectar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2.5v6"/><path d="M15 2.5v6"/><path d="M6 8.5h12v3.6a6 6 0 0 1-12 0V8.5Z"/><path d="M12 18v3.5"/></svg>
+          <span>VELA Connect</span>
+        </button>
+      </nav>
+
+      <div class="console-profile">
+        <button class="profile-trigger" id="profileTrigger">
+          <span class="dot dot-online" id="profileDot"></span>
+          <span class="profile-name" id="profileName">Cargando…</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="profile-menu" id="profileMenu" hidden></div>
+        <div class="logout-row">
+          <button class="btn btn-line btn-sm" id="logoutBtn" style="width:100%; justify-content:center;">Cerrar sesión</button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="content">
+      <section class="panel active" id="panel-operacion"></section>
+      <section class="panel" id="panel-perfiles"></section>
+      <section class="panel" id="panel-grupos"></section>
+      <section class="panel" id="panel-contenido"></section>
+      <section class="panel" id="panel-campanas"></section>
+      <section class="panel" id="panel-historial"></section>
+      <section class="panel" id="panel-configuracion"></section>
+      <section class="panel" id="panel-conectar"></section>
+    </main>
+  </div>
+
+  <div id="modalRoot"></div>
+  <div id="toastRoot"></div>
+
+  <script>window.VELA_API_BASE = "https://vela-backend-lgz6.onrender.com/api";</script>
+  <script src="app.js"></script>
+</body>
+</html>
