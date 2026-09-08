@@ -15,16 +15,53 @@ const state = {
 async function apiFetch(path, options = {}) {
   const headers = Object.assign({ 'Content-Type': 'application/json' }, options.headers || {});
   if (state.token) headers.Authorization = `Bearer ${state.token}`;
-  const res = await fetch(API_BASE + path, Object.assign({}, options, { headers }));
+  let res;
+  try {
+    res = await fetch(API_BASE + path, Object.assign({}, options, { headers }));
+  } catch (e) {
+    throw new Error('No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.');
+  }
   let body = null;
   try { body = await res.json(); } catch (e) { /* sin cuerpo */ }
   if (!res.ok) {
+    // Una sesión que ya no es válida (token vencido, o la cuenta ya no existe
+    // en el servidor) no debe fallar en silencio: sacamos a la persona a la
+    // pantalla de inicio de sesión con un mensaje claro, salvo que el propio
+    // intento de iniciar sesión/registrarse sea lo que falló.
+    if (res.status === 401 && state.token && !path.startsWith('/auth/')) {
+      sessionExpired();
+    }
     const err = new Error((body && (body.error || body.message)) || `Error ${res.status}`);
     err.status = res.status;
     err.body = body;
     throw err;
   }
   return body;
+}
+
+// Llama a `fn` (una función async) y, si lanza un error, lo muestra en un
+// toast en vez de dejarlo fallar en silencio. Se usa para envolver acciones
+// (crear, eliminar, guardar…) disparadas desde botones y formularios.
+async function guard(fn, errorPrefix) {
+  try {
+    await fn();
+  } catch (err) {
+    if (err && err.status === 401) return; // sessionExpired() ya se encargó de avisar
+    toast((errorPrefix ? errorPrefix + ': ' : '') + (err && err.message ? err.message : 'Ocurrió un error inesperado.'));
+  }
+}
+
+function sessionExpired() {
+  state.token = null;
+  localStorage.removeItem('vela_token');
+  localStorage.removeItem('vela_active_profile');
+  document.getElementById('modalRoot').innerHTML = '';
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('authScreen').classList.remove('hidden');
+  authMode = 'login';
+  renderAuthMode();
+  const msg = document.getElementById('authMessage');
+  if (msg) msg.innerHTML = '<div class="form-error">Tu sesión terminó. Vuelve a iniciar sesión.</div>';
 }
 
 const Api = {
@@ -220,11 +257,13 @@ async function renderPerfiles() {
       e.preventDefault();
       const name = document.getElementById('pfName').value.trim();
       const description = document.getElementById('pfDesc').value.trim();
-      await Api.createProfile(name, description || undefined);
-      closeModal();
-      toast('Perfil creado.');
-      await loadProfiles();
-      renderPerfiles();
+      await guard(async () => {
+        await Api.createProfile(name, description || undefined);
+        closeModal();
+        toast('Perfil creado.');
+        await loadProfiles();
+        renderPerfiles();
+      }, 'No se pudo crear el perfil');
     });
   });
 
@@ -312,7 +351,14 @@ async function renderGrupos() {
 
   async function load() {
     const query = document.getElementById('groupSearch').value.trim();
-    const groups = await Api.listGroups(state.activeProfileId, query ? { query } : {});
+    let groups;
+    try {
+      groups = await Api.listGroups(state.activeProfileId, query ? { query } : {});
+    } catch (err) {
+      if (err.status === 401) return;
+      document.getElementById('groupsBody').innerHTML = `<tr><td colspan="5" class="empty-state">No se pudo cargar: ${escapeHtml(err.message)}</td></tr>`;
+      return;
+    }
     const body = document.getElementById('groupsBody');
     if (!groups.length) {
       body.innerHTML = '<tr><td colspan="5" class="empty-state">No hay grupos todavía. Agrega uno o impórtalos desde VELA Connect.</td></tr>';
@@ -329,9 +375,11 @@ async function renderGrupos() {
     `).join('');
     body.querySelectorAll('[data-del]').forEach((btn) => {
       btn.addEventListener('click', async () => {
-        await Api.deleteGroup(btn.dataset.del);
-        toast('Grupo eliminado (el historial que lo usó se conserva).');
-        load();
+        await guard(async () => {
+          await Api.deleteGroup(btn.dataset.del);
+          toast('Grupo eliminado (el historial que lo usó se conserva).');
+          load();
+        }, 'No se pudo eliminar el grupo');
       });
     });
   }
@@ -419,7 +467,14 @@ async function renderContenido() {
   `;
 
   async function load() {
-    const items = await Api.listContents(state.activeProfileId);
+    let items;
+    try {
+      items = await Api.listContents(state.activeProfileId);
+    } catch (err) {
+      if (err.status === 401) return;
+      document.getElementById('contentList').innerHTML = `<div class="empty-state">No se pudo cargar: ${escapeHtml(err.message)}</div>`;
+      return;
+    }
     const list = document.getElementById('contentList');
     if (!items.length) {
       list.innerHTML = '<div class="empty-state">Todavía no has creado ningún contenido.</div>';
@@ -446,10 +501,10 @@ async function renderContenido() {
       p.classList.toggle('hidden');
     }));
     list.querySelectorAll('[data-dup]').forEach((b) => b.addEventListener('click', async () => {
-      await Api.duplicateContent(b.dataset.dup); toast('Contenido duplicado.'); load();
+      await guard(async () => { await Api.duplicateContent(b.dataset.dup); toast('Contenido duplicado.'); load(); }, 'No se pudo duplicar');
     }));
     list.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
-      await Api.deleteContent(b.dataset.del); toast('Contenido eliminado.'); load();
+      await guard(async () => { await Api.deleteContent(b.dataset.del); toast('Contenido eliminado.'); load(); }, 'No se pudo eliminar');
     }));
   }
 
@@ -523,7 +578,14 @@ async function renderCampanas() {
   `;
 
   async function load() {
-    const items = await Api.listCampaigns(state.activeProfileId);
+    let items;
+    try {
+      items = await Api.listCampaigns(state.activeProfileId);
+    } catch (err) {
+      if (err.status === 401) return;
+      document.getElementById('campaignsList').innerHTML = `<div class="empty-state">No se pudo cargar: ${escapeHtml(err.message)}</div>`;
+      return;
+    }
     const list = document.getElementById('campaignsList');
     if (!items.length) {
       list.innerHTML = '<div class="empty-state">Todavía no has creado ninguna campaña.</div>';
@@ -569,10 +631,16 @@ async function renderCampanas() {
   }
 
   document.getElementById('btnAddCampaign').addEventListener('click', async () => {
-    const [contents, groups] = await Promise.all([
-      Api.listContents(state.activeProfileId),
-      Api.listGroups(state.activeProfileId, { status: 'active' }),
-    ]);
+    let contents, groups;
+    try {
+      [contents, groups] = await Promise.all([
+        Api.listContents(state.activeProfileId),
+        Api.listGroups(state.activeProfileId, { status: 'active' }),
+      ]);
+    } catch (err) {
+      if (err.status !== 401) toast('No se pudo continuar: ' + err.message);
+      return;
+    }
     if (!contents.length || !groups.length) {
       toast('Necesitas al menos un contenido y un grupo activo antes de crear una campaña.');
       return;
@@ -600,13 +668,15 @@ async function renderCampanas() {
       e.preventDefault();
       const groupIds = Array.from(document.querySelectorAll('#campaignForm .checkbox-row input:checked')).map((i) => i.value);
       if (!groupIds.length) { toast('Selecciona al menos un grupo.'); return; }
-      await Api.createCampaign({
-        profileId: state.activeProfileId,
-        contentId: document.getElementById('cmContent').value,
-        groupIds,
-        name: document.getElementById('cmName').value.trim(),
-      });
-      closeModal(); toast('Campaña creada como borrador.'); load();
+      await guard(async () => {
+        await Api.createCampaign({
+          profileId: state.activeProfileId,
+          contentId: document.getElementById('cmContent').value,
+          groupIds,
+          name: document.getElementById('cmName').value.trim(),
+        });
+        closeModal(); toast('Campaña creada como borrador.'); load();
+      }, 'No se pudo crear la campaña');
     });
   });
 
@@ -639,7 +709,14 @@ async function renderOperacion() {
     </div>
     <div class="op-grid" id="opGrid"><div class="empty-state">Cargando…</div></div>
   `;
-  const items = (await Api.listCampaigns(state.activeProfileId)).filter((c) => ['running', 'paused'].includes(c.status));
+  let items;
+  try {
+    items = (await Api.listCampaigns(state.activeProfileId)).filter((c) => ['running', 'paused'].includes(c.status));
+  } catch (err) {
+    if (err.status === 401) return;
+    document.getElementById('opGrid').innerHTML = `<div class="empty-state">No se pudo cargar: ${escapeHtml(err.message)}</div>`;
+    return;
+  }
   const grid = document.getElementById('opGrid');
   if (!items.length) {
     grid.innerHTML = '<div class="empty-state">No hay campañas activas en este perfil ahora mismo.</div>';
@@ -663,7 +740,9 @@ async function renderOperacion() {
     </div>
   `).join('');
   grid.querySelectorAll('[data-action]').forEach((b) => {
-    b.addEventListener('click', async () => { await Api.campaignAction(b.dataset.id, b.dataset.action); renderOperacion(); });
+    b.addEventListener('click', async () => {
+      await guard(async () => { await Api.campaignAction(b.dataset.id, b.dataset.action); renderOperacion(); }, 'No se pudo actualizar la campaña');
+    });
   });
 }
 
@@ -682,7 +761,14 @@ async function renderHistorial() {
       </div>
     </div>
   `;
-  const rows = await Api.listHistory({ profileId: state.activeProfileId });
+  let rows;
+  try {
+    rows = await Api.listHistory({ profileId: state.activeProfileId });
+  } catch (err) {
+    if (err.status === 401) return;
+    document.getElementById('historyBody').innerHTML = `<tr><td colspan="5" class="empty-state">No se pudo cargar: ${escapeHtml(err.message)}</td></tr>`;
+    return;
+  }
   const body = document.getElementById('historyBody');
   if (!rows.length) {
     body.innerHTML = '<tr><td colspan="5" class="empty-state">Todavía no hay historial en este perfil.</td></tr>';
@@ -709,7 +795,14 @@ async function renderConfiguracion() {
       <div class="config-actions"><button class="btn btn-accent" id="btnSaveSettings">Guardar cambios</button></div>
     </div>
   `;
-  const s = await Api.getSettings();
+  let s;
+  try {
+    s = await Api.getSettings();
+  } catch (err) {
+    if (err.status === 401) return;
+    document.getElementById('configGrid').innerHTML = `<div class="empty-state">No se pudo cargar: ${escapeHtml(err.message)}</div>`;
+    return;
+  }
   document.getElementById('configGrid').innerHTML = `
     <div class="field"><label>Intervalo mínimo entre publicaciones (minutos)</label><input id="cfMin" value="${s.minIntervalMinutes}"></div>
     <div class="field"><label>Máximo de publicaciones por bloque</label><input id="cfMax" value="${s.maxPerBlock}"></div>
@@ -719,15 +812,17 @@ async function renderConfiguracion() {
     <div class="field"><label>Hora final permitida</label><input id="cfEnd" value="${s.allowedEndTime}"></div>
   `;
   document.getElementById('btnSaveSettings').addEventListener('click', async () => {
-    await Api.patchSettings({
-      minIntervalMinutes: Number(document.getElementById('cfMin').value),
-      maxPerBlock: Number(document.getElementById('cfMax').value),
-      blockWaitMinutes: Number(document.getElementById('cfWait').value),
-      dailyLimitPerProfile: Number(document.getElementById('cfDaily').value),
-      allowedStartTime: document.getElementById('cfStart').value,
-      allowedEndTime: document.getElementById('cfEnd').value,
-    });
-    toast('Configuración guardada.');
+    await guard(async () => {
+      await Api.patchSettings({
+        minIntervalMinutes: Number(document.getElementById('cfMin').value),
+        maxPerBlock: Number(document.getElementById('cfMax').value),
+        blockWaitMinutes: Number(document.getElementById('cfWait').value),
+        dailyLimitPerProfile: Number(document.getElementById('cfDaily').value),
+        allowedStartTime: document.getElementById('cfStart').value,
+        allowedEndTime: document.getElementById('cfEnd').value,
+      });
+      toast('Configuración guardada.');
+    }, 'No se pudo guardar');
   });
 }
 
@@ -739,7 +834,14 @@ async function renderConectar() {
     <div class="page-head"><div><h1>VELA Connect</h1><p class="page-sub">${escapeHtml(activeProfileName())}</p></div></div>
     <div class="surface connect-card" id="connectCard"><div class="empty-state">Cargando…</div></div>
   `;
-  const info = await Api.getConnector(state.activeProfileId);
+  let info;
+  try {
+    info = await Api.getConnector(state.activeProfileId);
+  } catch (err) {
+    if (err.status === 401) return;
+    document.getElementById('connectCard').innerHTML = `<div class="empty-state">No se pudo cargar: ${escapeHtml(err.message)}</div>`;
+    return;
+  }
   const card = document.getElementById('connectCard');
   const connected = info && info.status === 'connected';
   card.innerHTML = `
@@ -764,7 +866,13 @@ async function renderConectar() {
     </div>
   `;
   document.getElementById('btnNewKey').addEventListener('click', async () => {
-    const res = await Api.generateConnectorKey(state.activeProfileId);
+    let res;
+    try {
+      res = await Api.generateConnectorKey(state.activeProfileId);
+    } catch (err) {
+      if (err.status !== 401) toast('No se pudo generar la clave: ' + err.message);
+      return;
+    }
     openModal(`
       <h2>Clave de conexión generada</h2>
       <p class="cell-muted" style="margin-bottom:10px;">Cópiala ahora: no se volverá a mostrar. Pégala en el popup de VELA Connect.</p>
