@@ -112,6 +112,15 @@ function escapeHtml(str) {
   }[c]));
 }
 
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 function formatDateTime(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -938,10 +947,37 @@ async function renderConectar() {
     openModal(`
       <h2>Clave de conexión generada</h2>
       <p class="cell-muted" style="margin-bottom:10px;">Cópiala ahora: no se volverá a mostrar. Pégala en el popup de VELA Connect.</p>
-      <div class="field-block"><label>Installation ID</label><input readonly value="${escapeHtml(res.installationId)}"></div>
-      <div class="field-block"><label>Clave</label><input readonly value="${escapeHtml(res.connectorKey)}" class="mono-key"></div>
-      <div class="modal-actions"><button class="btn btn-accent" id="closeKeyModal">Listo</button></div>
+      <div class="field-block">
+        <label>Installation ID</label>
+        <div class="copy-row">
+          <input readonly value="${escapeHtml(res.installationId)}" id="fieldInstallationId">
+          <button class="btn btn-line btn-sm" type="button" id="copyInstallationId">Copiar</button>
+        </div>
+      </div>
+      <div class="field-block">
+        <label>Clave</label>
+        <div class="copy-row">
+          <input readonly value="${escapeHtml(res.connectorKey)}" class="mono-key" id="fieldConnectorKey">
+          <button class="btn btn-line btn-sm" type="button" id="copyConnectorKey">Copiar</button>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-line" id="copyBothKeys">Copiar los dos</button>
+        <button class="btn btn-accent" id="closeKeyModal">Listo</button>
+      </div>
     `);
+    const wireCopyButton = (btnId, getText) => {
+      const btn = document.getElementById(btnId);
+      btn.addEventListener('click', async () => {
+        const ok = await copyToClipboard(getText());
+        const original = btn.textContent;
+        btn.textContent = ok ? '✓ Copiado' : 'No se pudo copiar';
+        setTimeout(() => { btn.textContent = original; }, 1600);
+      });
+    };
+    wireCopyButton('copyInstallationId', () => res.installationId);
+    wireCopyButton('copyConnectorKey', () => res.connectorKey);
+    wireCopyButton('copyBothKeys', () => `Installation ID: ${res.installationId}\nClave: ${res.connectorKey}`);
     document.getElementById('closeKeyModal').addEventListener('click', () => { closeModal(); renderConectar(); });
   });
 }
