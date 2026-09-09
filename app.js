@@ -337,7 +337,7 @@ async function renderGrupos() {
   if (!state.activeProfileId) { el.innerHTML = noProfileMessage(); return; }
   el.innerHTML = `
     <div class="page-head">
-      <div><h1>Grupos</h1><p class="page-sub">${escapeHtml(activeProfileName())}</p></div>
+      <div><h1>Grupos</h1><p class="page-sub">${escapeHtml(activeProfileName())} · <span id="groupsCountLabel">cargando…</span></p></div>
       <button class="btn btn-accent" id="btnAddGroup">+ Agregar grupo</button>
     </div>
     <div class="surface">
@@ -367,7 +367,15 @@ async function renderGrupos() {
     } catch (err) {
       if (err.status === 401) return;
       document.getElementById('groupsBody').innerHTML = `<tr><td colspan="5" class="empty-state">No se pudo cargar: ${escapeHtml(err.message)}</td></tr>`;
+      document.getElementById('groupsCountLabel').textContent = '';
       return;
+    }
+    // Cuenta total de grupos cargados en este Perfil. Se calcula sobre el
+    // resultado SIN filtrar por búsqueda (solo cuando no hay texto en el
+    // buscador), para que el número no cambie mientras se está buscando.
+    if (!query) {
+      document.getElementById('groupsCountLabel').textContent =
+        `${groups.length} ${groups.length === 1 ? 'grupo cargado' : 'grupos cargados'}`;
     }
     const body = document.getElementById('groupsBody');
     if (!groups.length) {
@@ -667,6 +675,7 @@ async function renderCampanas() {
         <div class="list-main">
           <div class="list-title">${escapeHtml(c.name)}</div>
           <div class="list-meta">${statusPill(c.status)}<span>${c.processed} de ${c.total} procesados</span></div>
+          ${campaignPaceMeta(c)}
         </div>
         <div class="list-actions">${campaignActions(c)}</div>
       </div>
@@ -754,6 +763,11 @@ async function renderCampanas() {
   load();
 }
 
+function campaignPaceMeta(c) {
+  if (c.minIntervalMinutes == null) return '';
+  return `<div class="list-meta list-meta-sub">Ritmo al crearla: cada ${escapeHtml(String(c.minIntervalMinutes))} min · máx. ${escapeHtml(String(c.maxPerBlock))} por bloque (espera ${escapeHtml(String(c.blockWaitMinutes))} min) · límite diario ${escapeHtml(String(c.dailyLimitPerProfile))} · horario ${escapeHtml(String(c.allowedStartTime))}–${escapeHtml(String(c.allowedEndTime))}</div>`;
+}
+
 function campaignActions(c) {
   const del = `<button class="btn btn-danger btn-sm" data-action="delete" data-id="${c.id}">Eliminar</button>`;
   if (c.status === 'draft' || c.status === 'scheduled') {
@@ -818,11 +832,38 @@ async function renderOperacion() {
 }
 
 // ---------- Historial ----------
+
+// Arma, a partir de las mismas filas que ya se piden para la tabla de
+// Historial (nada de pedidos nuevos al backend), un resumen de cuántas
+// publicaciones fueron efectivas (status "published") por campaña, más el
+// total de intentos registrados para esa campaña.
+function summarizeHistoryByCampaign(rows) {
+  const byCampaign = new Map();
+  for (const r of rows) {
+    const key = r.campaign || 'Sin campaña';
+    if (!byCampaign.has(key)) byCampaign.set(key, { campaign: key, published: 0, total: 0 });
+    const s = byCampaign.get(key);
+    s.total += 1;
+    if (r.status === 'published') s.published += 1;
+  }
+  return Array.from(byCampaign.values()).sort((a, b) => b.published - a.published || b.total - a.total);
+}
+
 async function renderHistorial() {
   const el = document.getElementById('panel-historial');
   if (!state.activeProfileId) { el.innerHTML = noProfileMessage(); return; }
   el.innerHTML = `
     <div class="page-head"><div><h1>Historial</h1><p class="page-sub">Se conserva aunque elimines un perfil, grupo, contenido o campaña</p></div></div>
+    <div class="surface" id="historyStatsSurface" hidden>
+      <h3 class="stats-title">Publicaciones efectivas por campaña</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Campaña</th><th>Publicaciones efectivas</th><th>Intentos registrados</th></tr></thead>
+          <tbody id="historyStatsBody"></tbody>
+        </table>
+      </div>
+      <p class="page-sub" id="historyStatsNote" hidden></p>
+    </div>
     <div class="surface">
       <div class="table-wrap">
         <table>
@@ -844,6 +885,25 @@ async function renderHistorial() {
   if (!rows.length) {
     body.innerHTML = '<tr><td colspan="5" class="empty-state">Todavía no hay historial en este perfil.</td></tr>';
     return;
+  }
+
+  const statsSurface = document.getElementById('historyStatsSurface');
+  const stats = summarizeHistoryByCampaign(rows);
+  statsSurface.hidden = false;
+  document.getElementById('historyStatsBody').innerHTML = stats.map((s) => `
+    <tr>
+      <td>${escapeHtml(s.campaign)}</td>
+      <td>${s.published}</td>
+      <td class="cell-muted">${s.total}</td>
+    </tr>
+  `).join('');
+  // El backend devuelve como máximo los 500 registros más recientes de
+  // historial (para no traer una lista sin límite); si se llegó a ese tope,
+  // el resumen de arriba refleja solo esos 500, no la historia completa.
+  if (rows.length >= 500) {
+    const note = document.getElementById('historyStatsNote');
+    note.hidden = false;
+    note.textContent = 'Calculado sobre los 500 registros de historial más recientes.';
   }
   body.innerHTML = rows.map((r) => `
     <tr>
