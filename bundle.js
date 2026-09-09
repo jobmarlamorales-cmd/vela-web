@@ -463,11 +463,19 @@ var require_queue_service = __commonJS({
         }
       }
       const blockWindowMs = blockWaitMinutes * 60 * 1e3;
-      const inBlockWindow = recentDispatches.filter(
-        (r) => now.getTime() - new Date(r.executed_at).getTime() < blockWindowMs
-      ).length;
-      if (inBlockWindow >= maxPerBlock) {
-        return { allowed: false, reason: "BLOCK_LIMIT" };
+      let currentBlockCount = 0;
+      for (let i = 0; i < recentDispatches.length; i++) {
+        currentBlockCount++;
+        const next = recentDispatches[i + 1];
+        if (!next) break;
+        const gapMs = new Date(recentDispatches[i].executed_at).getTime() - new Date(next.executed_at).getTime();
+        if (gapMs >= blockWindowMs) break;
+      }
+      if (currentBlockCount >= maxPerBlock) {
+        const sinceLastMs = now.getTime() - new Date(recentDispatches[0].executed_at).getTime();
+        if (sinceLastMs < blockWindowMs) {
+          return { allowed: false, reason: "BLOCK_LIMIT" };
+        }
       }
       const todayKey = localDateKey(now, tz);
       const todayCount = recentDispatches.filter((r) => localDateKey(new Date(r.executed_at), tz) === todayKey).length;
