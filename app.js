@@ -732,10 +732,24 @@ async function renderCampanas() {
         <div class="field-block"><label>Contenido</label>
           <select id="cmContent">${contents.map((c) => `<option value="${c.id}">${escapeHtml(c.title)}</option>`).join('')}</select>
         </div>
-        <div class="field-block"><label>Grupos</label>
-          <div class="checkbox-list">
-            ${groups.map((g) => `<label class="checkbox-row"><input type="checkbox" value="${g.id}" checked> ${escapeHtml(g.name)}</label>`).join('')}
+        <div class="field-block"><label>Grupos <span class="cm-count" id="cmCount"></span></label>
+          <div class="cm-tools">
+            <div class="search cm-search">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/></svg>
+              <input type="text" id="cmSearch" placeholder="Buscar grupo… (ej. Phx)" autocomplete="off">
+              <button type="button" class="cm-clear" id="cmClear" title="Limpiar búsqueda" hidden>×</button>
+            </div>
+            <div class="cm-buttons">
+              <button type="button" class="btn btn-line btn-sm" id="cmAll">Seleccionar todos</button>
+              <button type="button" class="btn btn-line btn-sm" id="cmNone">Deseleccionar todos</button>
+              <label class="cm-only"><input type="checkbox" id="cmOnlySel"> Solo seleccionados</label>
+            </div>
           </div>
+          <div class="checkbox-list cm-list" id="cmList">
+            ${groups.map((g) => `<label class="checkbox-row" data-search="${escapeHtml(campaignSearchText(g))}"><input type="checkbox" value="${g.id}" checked><span class="cm-name">${escapeHtml(g.name)}</span></label>`).join('')}
+            <div class="cm-empty" id="cmEmpty" hidden>Ningún grupo coincide con la búsqueda.</div>
+          </div>
+          <p class="cm-hint">Con una búsqueda escrita, los botones solo marcan o desmarcan los grupos encontrados.</p>
         </div>
         <div class="modal-actions">
           <button type="button" class="btn btn-line" id="cmCancel">Cancelar</button>
@@ -743,6 +757,52 @@ async function renderCampanas() {
         </div>
       </form>
     `);
+    const rows = Array.from(document.querySelectorAll('#cmList .checkbox-row'));
+    const searchInput = document.getElementById('cmSearch');
+    const onlySel = document.getElementById('cmOnlySel');
+    const searchTerms = () => {
+      const q = normalizeForSearch(searchInput.value.trim());
+      if (!q) return [];
+      return [q].concat(CAMPAIGN_SEARCH_ALIASES[q] || []);
+    };
+    const matchesSearch = (row, terms) => !terms.length || terms.some((t) => row.dataset.search.includes(t));
+    const refreshGroups = () => {
+      const terms = searchTerms();
+      let shown = 0, found = 0, selected = 0;
+      rows.forEach((row) => {
+        const box = row.querySelector('input');
+        const hit = matchesSearch(row, terms);
+        if (hit) found++;
+        if (box.checked) selected++;
+        const visible = hit && (!onlySel.checked || box.checked);
+        row.hidden = !visible;
+        row.classList.toggle('is-checked', box.checked);
+        if (visible) shown++;
+      });
+      document.getElementById('cmEmpty').hidden = shown > 0;
+      document.getElementById('cmEmpty').textContent = onlySel.checked && !selected
+        ? 'Todavía no has seleccionado grupos.' : 'Ningún grupo coincide con la búsqueda.';
+      document.getElementById('cmClear').hidden = !searchInput.value;
+      document.getElementById('cmCount').textContent =
+        `${selected} de ${rows.length} seleccionados` + (terms.length ? ` · ${found} encontrados` : '');
+      document.getElementById('cmAll').textContent = terms.length
+        ? (found === 1 ? 'Seleccionar el encontrado' : `Seleccionar los ${found} encontrados`) : 'Seleccionar todos';
+      document.getElementById('cmNone').textContent = terms.length ? 'Deseleccionar encontrados' : 'Deseleccionar todos';
+    };
+    const setFound = (value) => {
+      const terms = searchTerms();
+      rows.forEach((row) => { if (matchesSearch(row, terms)) row.querySelector('input').checked = value; });
+      refreshGroups();
+    };
+    searchInput.addEventListener('input', refreshGroups);
+    onlySel.addEventListener('change', refreshGroups);
+    document.getElementById('cmList').addEventListener('change', refreshGroups);
+    document.getElementById('cmClear').addEventListener('click', () => { searchInput.value = ''; refreshGroups(); searchInput.focus(); });
+    document.getElementById('cmAll').addEventListener('click', () => setFound(true));
+    document.getElementById('cmNone').addEventListener('click', () => setFound(false));
+    searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
+    refreshGroups();
+
     document.getElementById('cmCancel').addEventListener('click', closeModal);
     document.getElementById('campaignForm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -761,6 +821,16 @@ async function renderCampanas() {
   });
 
   load();
+}
+
+// Búsqueda de grupos en "Nueva campaña": sin acentos ni mayúsculas, por nombre o URL.
+// Escribir "phx" también encuentra "Phoenix" (y al revés).
+const CAMPAIGN_SEARCH_ALIASES = { phx: ['phoenix'], phoenix: ['phx'], az: ['arizona'], arizona: ['az'] };
+function normalizeForSearch(str) {
+  return String(str || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+function campaignSearchText(g) {
+  return normalizeForSearch(`${g.name || ''} ${g.url || ''}`);
 }
 
 function campaignPaceMeta(c) {
